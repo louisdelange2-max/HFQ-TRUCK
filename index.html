@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111111">
+<title>HFQ Truck Onboarding</title>
+<link rel="manifest" href="manifest.json">
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--ink:#111;--muted:#657080;--line:#dde1e7;--red:#c62828;--green:#1b7f3a;--amber:#b26a00;--radius:18px}
+*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink)}button,input,select,textarea{font:inherit}
+button{border:0;border-radius:14px;padding:12px 14px;font-weight:700;background:#111;color:#fff;cursor:pointer}button.secondary{background:#e8eaee;color:#111}button.good{background:var(--green)}button.danger{background:var(--red)}button:disabled{opacity:.55}
+.wrap{max-width:980px;margin:0 auto;padding:12px 12px 80px}.top{background:#111;color:#fff;border-radius:0 0 24px 24px;padding:16px 14px 20px;box-shadow:0 8px 28px rgba(0,0,0,.18)}
+.brand{display:flex;gap:12px;align-items:center}.brand img{width:58px;height:58px;object-fit:contain;background:#fff;border-radius:14px;padding:5px}.brand h1{font-size:20px;margin:0}.brand p{margin:4px 0 0;color:#d7d7d7;font-size:13px}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid #333;border-radius:999px;padding:7px 10px;background:#222;color:#fff;font-size:12px}.bar{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.tabs{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(4,1fr);z-index:10}.tabs button{border-radius:0;background:#fff;color:#111;padding:11px 4px;font-size:12px}.tabs button.active{background:#111;color:#fff}
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:10px;margin-top:12px}.card{grid-column:span 12;background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:14px;box-shadow:0 4px 16px rgba(0,0,0,.05)}
+@media(min-width:800px){.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}}
+label{display:block;font-size:12px;font-weight:800;color:#47515f;margin:8px 0 5px}input,select,textarea{width:100%;border:1px solid var(--line);border-radius:13px;padding:12px;background:#fff;color:#111}textarea{min-height:80px}
+.missed{border:2px solid var(--red)!important;background:#fff5f5!important}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.muted{color:var(--muted);font-size:13px}.status{font-size:12px;font-weight:800;border-radius:999px;padding:6px 9px}.valid{background:#e6f4ea;color:var(--green)}.expired{background:#fde7e7;color:var(--red)}.pending{background:#fff3cd;color:var(--amber)}
+.list{display:grid;gap:10px}.item{border:1px solid var(--line);border-radius:15px;padding:12px;background:#fff}.check{display:flex;justify-content:space-between;gap:10px;align-items:center;border:1px solid var(--line);border-radius:14px;padding:10px;margin:8px 0}.check select{max-width:125px}
+.photoGroup{border:1px solid var(--line);border-radius:14px;padding:10px;margin:10px 0;background:#fafafa}.photoGroup h3{margin:0 0 8px;font-size:15px}.photos{display:flex;gap:8px;flex-wrap:wrap}.photos img{width:88px;height:88px;object-fit:cover;border-radius:12px;border:1px solid var(--line)}.error{background:#fff0f0;border:1px solid #ffc7c7;color:#8b0000;border-radius:14px;padding:12px;margin:12px 0;white-space:pre-wrap}.ok{background:#f0fff4;border:1px solid #b7efc5;color:#145a2a;border-radius:14px;padding:12px;margin:12px 0}
+</style>
+</head>
+<body>
+<div class="top"><div class="brand"><img src="icons/hfq-logo.png"><div><h1>HFQ Truck Onboarding</h1><p>Truck / trailer checklist, photos, approval, plant number and QR</p></div></div><div class="bar"><span class="pill" id="modePill">User Mode</span><span class="pill">Offline ready</span><span class="pill">SA Time</span><span class="pill">App v1.0.27</span></div></div>
+<div class="wrap"><div id="msg"></div><main id="view"></main></div>
+<nav class="tabs"><button id="tabAdd" onclick="show('add')">Add</button><button id="tabList" onclick="show('list')">Trucks</button><button id="tabSync" onclick="show('sync')">Sync</button><button id="tabAdmin" onclick="show('admin')">Admin</button></nav>
+<script>
+(function(){
+'use strict';
+var HARD_CODED_SCRIPT_URL='https://script.google.com/macros/s/AKfycbzzvBv-od89yBKdrGGC4JEO4vqpSnwAGkmjA_r3WtUESPfwbl1QcSYgLiThXx-xayTv/exec',busy=false;
+var state={tab:'add',admin:false,companies:[],trucks:[],queue:[],editing:null};
+var checklist=['Tyres in good order','License disc valid and visible','Number plates visible','Head lights working','Tail lights and brake lights working','Indicators working','Brakes checked','Reflective tape fitted','Fire extinguisher available','Wheel spanner and jack available','Trailer body condition good','Truck body condition good','No oil leaks visible','Windows and mirrors good','General roadworthy condition'];
+function $(id){return document.getElementById(id)}function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}function msg(t,cls){$('msg').innerHTML=t?'<div class="'+(cls||'ok')+'">'+esc(t)+'</div>':''}function nowSA(){return new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Johannesburg',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date()).replace(' ','T')}function uid(){return 'HFQ-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,7).toUpperCase()}
+function setBusy(on,label){busy=!!on;Array.prototype.forEach.call(document.querySelectorAll('button'),function(b){b.disabled=busy});if(label)msg(label,'ok')}
+function save(){try{localStorage.setItem('hfqTruckStateV3',JSON.stringify({companies:state.companies,trucks:state.trucks.map(lightTruck),queue:state.queue}))}catch(e){msg('Phone storage is full. Sync queue before adding more photos.','error')}}
+function lightTruck(t){var x=JSON.parse(JSON.stringify(t||{}));delete x.phoneReportHtml;return x}
+function load(){try{var s=JSON.parse(localStorage.getItem('hfqTruckStateV3')||'{}');state.companies=s.companies||[];state.trucks=s.trucks||[];state.queue=s.queue||[]}catch(e){}}
+function markMissed(ids){var m=[];ids.forEach(function(id){var el=$(id);if(el){var bad=!String(el.value||'').trim();el.classList.toggle('missed',bad);if(bad)m.push(id);el.oninput=el.onchange=function(){el.classList.remove('missed')}}});return m}
+function daysLeft(d){if(!d)return null;var today=new Date(new Date().toLocaleString('en-US',{timeZone:'Africa/Johannesburg'}));today.setHours(0,0,0,0);return Math.ceil((new Date(d+'T00:00:00')-today)/86400000)}function statusFor(t){var dl=daysLeft(t.licenseExpiry);if(t.approvalStatus!=='Approved')return ['PENDING','pending'];if(dl!==null&&dl<0)return ['EXPIRED','expired'];if(dl!==null&&dl<=30)return ['EXPIRING','pending'];return ['VALID','valid']}
+function setTabs(){['Add','List','Sync','Admin'].forEach(function(x){var b=$('tab'+x);if(b)b.className=state.tab.toLowerCase()===x.toLowerCase()?'active':''});$('modePill').textContent=state.admin?'Admin Mode':'User Mode'}window.show=function(tab){state.tab=tab;msg('');render()};function render(){setTabs();if(state.tab==='add')renderAdd();if(state.tab==='list')renderList();if(state.tab==='sync')renderSync();if(state.tab==='admin')renderAdmin()}
+
+function captureCurrentForm(t){
+ t=t||state.editing||{};
+ if($('company'))t.company=$('company').value;
+ if($('driver'))t.driver=$('driver').value;
+ if($('truckReg'))t.truckReg=$('truckReg').value;
+ if($('trailerReg'))t.trailerReg=$('trailerReg').value;
+ if($('licenseExpiry'))t.licenseExpiry=$('licenseExpiry').value;
+ if($('permit'))t.permit=$('permit').value;
+ if($('notes'))t.notes=$('notes').value;
+ var checks=t.checks||{};
+ Array.prototype.forEach.call(document.querySelectorAll('[data-check]'),function(s){
+   checks[s.getAttribute('data-check')]=s.value;
+ });
+ t.checks=checks;
+ state.editing=t;
+ return t;
+}
+function bindFormKeepEvents(){
+ ['company','driver','truckReg','trailerReg','licenseExpiry','permit','notes'].forEach(function(id){
+   var el=$(id);
+   if(el){
+     el.oninput=function(){captureCurrentForm(state.editing||{})};
+     el.onchange=function(){captureCurrentForm(state.editing||{})};
+   }
+ });
+ Array.prototype.forEach.call(document.querySelectorAll('[data-check]'),function(s){
+   s.onchange=function(){captureCurrentForm(state.editing||{})};
+ });
+}
+
+function readFile(f){return new Promise(function(res){var r=new FileReader();r.onload=function(ev){var img=new Image();img.onload=function(){var max=900,w=img.width,h=img.height;if(w>h&&w>max){h=Math.round(h*max/w);w=max}else if(h>=w&&h>max){w=Math.round(w*max/h);h=max}var c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);res(c.toDataURL('image/jpeg',0.72))};img.onerror=function(){res(ev.target.result)};img.src=ev.target.result};r.readAsDataURL(f)})}
+function photoInputHtml(key,label,t){var arr=(t.photoSections&&t.photoSections[key])||[];return '<div class="photoGroup"><h3>'+esc(label)+'</h3><input data-photo-key="'+key+'" type="file" accept="image/*" multiple capture="environment"><div class="photos">'+arr.map(function(p,i){return '<span style="position:relative"><img src="'+p+'"><button type="button" onclick="removePhoto(\''+key+'\','+i+')" style="position:absolute;right:-5px;top:-5px;background:#c62828;border-radius:99px;padding:3px 7px">×</button></span>'}).join('')+'</div></div>'}
+window.removePhoto=function(key,i){var t=captureCurrentForm(state.editing||{});if(t.photoSections&&t.photoSections[key]){t.photoSections[key].splice(i,1);t.photos=Object.keys(t.photoSections).reduce(function(a,k){return a.concat(t.photoSections[k]||[])},[]);state.editing=t;renderAdd()}}
+function bindPhotoInputs(t){Array.prototype.forEach.call(document.querySelectorAll('[data-photo-key]'),function(inp){inp.onchange=function(){t=captureCurrentForm(t||{});var key=inp.getAttribute('data-photo-key'),files=Array.prototype.slice.call(inp.files||[]);if(!t.photoSections)t.photoSections={};var arr=t.photoSections[key]||[];Promise.all(files.map(readFile)).then(function(list){t=captureCurrentForm(t||{});t.photoSections[key]=arr.concat(list).slice(0,8);t.photos=Object.keys(t.photoSections).reduce(function(a,k){return a.concat(t.photoSections[k]||[])},[]);state.editing=t;msg('Photo added. Fields kept.','ok');renderAdd()})}})}
+function buildPhoneReportHtml(t){var rows=Object.keys(t.checks||{}).map(function(k){return '<tr><td>'+esc(k)+'</td><td>'+esc(t.checks[k])+'</td></tr>'}).join('');return '<!doctype html><html><head><meta charset="utf-8"><style>@page{size:A4;margin:14mm}body{font-family:Arial;font-size:12px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:6px}.photo img{width:145px;height:110px;object-fit:cover;border:1px solid #aaa;margin:5px}</style></head><body><h1>HFQ Truck Onboarding Report</h1><p>Created on phone SA time: '+esc(t.phoneReportCreatedAt||nowSA())+'</p><p><b>PENDING ADMIN APPROVAL</b></p><table><tr><th>Company</th><td>'+esc(t.company)+'</td><th>Driver</th><td>'+esc(t.driver)+'</td></tr><tr><th>Truck Reg</th><td>'+esc(t.truckReg)+'</td><th>Trailer(s)</th><td>'+esc(t.trailerReg)+'</td></tr><tr><th>License Expiry</th><td>'+esc(t.licenseExpiry)+'</td><th>Permit</th><td>'+esc(t.permit)+'</td></tr></table><h2>Checklist</h2><table>'+rows+'</table><h2>Notes</h2><p>'+esc(t.notes||'')+'</p><h2>Photos</h2>'+((t.photos||[]).map(function(p){return '<span class="photo"><img src="'+p+'"></span>'}).join('')||'<p>No photos</p>')+'</body></html>'}
+function renderAdd(){var t=state.editing||{};var comps='<option value="">Select company / owner</option>'+state.companies.map(function(c){return '<option '+(t.company===c?'selected':'')+'>'+esc(c)+'</option>'}).join('');$('view').innerHTML='<div class="grid"><section class="card"><h2>'+(state.editing?'Edit Truck':'New Truck / Trailer')+'</h2><p class="muted">Company / Owner is downloaded from Google Sheets Company Master tab.</p><div class="two"><div><label>Company / Owner</label><select id="company">'+comps+'</select></div><div><label>Driver Name</label><input id="driver" value="'+esc(t.driver||'')+'"></div><div><label>Truck Registration</label><input id="truckReg" value="'+esc(t.truckReg||'')+'"></div><div><label>Trailer Registration(s)</label><textarea id="trailerReg">'+esc(t.trailerReg||'')+'</textarea></div><div><label>License Disc Expiry</label><input id="licenseExpiry" type="date" value="'+esc(t.licenseExpiry||'')+'"></div><div><label>Roadworthy / Permit No.</label><input id="permit" value="'+esc(t.permit||'')+'"></div></div><label>Notes / Defects</label><textarea id="notes">'+esc(t.notes||'')+'</textarea></section><section class="card"><h2>Checklist</h2>'+checklist.map(function(c){var v=(t.checks&&t.checks[c])||'Yes';return '<div class="check"><strong>'+esc(c)+'</strong><select data-check="'+esc(c)+'"><option '+(v==='Yes'?'selected':'')+'>Yes</option><option '+(v==='No'?'selected':'')+'>No</option><option '+(v==='N/A'?'selected':'')+'>N/A</option></select></div>'}).join('')+'</section><section class="card"><h2>Required Photos</h2>'+photoInputHtml('licenseDisc','License Disc',t)+photoInputHtml('operatorDisc','Operator Disc',t)+photoInputHtml('driverPhoto','Driver Photo',t)+photoInputHtml('driverLicense','Driver License',t)+photoInputHtml('truckPhotos','Truck / Trailer Photos',t)+'</section><section class="card"><div class="row"><button onclick="saveTruck()">Save / Queue</button><button class="secondary" onclick="clearForm()">Clear</button></div></section></div>';bindPhotoInputs(t);bindFormKeepEvents()}
+window.clearForm=function(){state.editing=null;renderAdd()}
+function duplicateTruckRegExists(reg,id){var n=String(reg||'').trim().toUpperCase().replace(/\s+/g,'');return state.trucks.some(function(t){return t.id!==id&&String(t.truckReg||'').trim().toUpperCase().replace(/\s+/g,'')===n})}
+function hasUnsyncedTruck(id){
+ return (state.queue||[]).some(function(q){
+   return q && q.payload && String(q.payload.id)===String(id);
+ });
+}
+window.deleteUnsyncedTruck=function(id){
+ if(busy)return;
+ var t=state.trucks.find(function(x){return String(x.id)===String(id)});
+ if(!t)return;
+
+ var matchingQueue=(state.queue||[]).filter(function(q){
+   return q && q.payload && String(q.payload.id)===String(id);
+ });
+
+ if(!matchingQueue.length){
+   msg('This entry is not in the sync queue anymore. It cannot be deleted here.','error');
+   return;
+ }
+
+ if(!confirm('Delete this unsynced entry from this phone?\n\nTruck Reg: '+(t.truckReg||'')+'\nQueue items to remove: '+matchingQueue.length+'\n\nThis removes the local truck AND all matching queue items.')){
+   return;
+ }
+
+ state.trucks=state.trucks.filter(function(x){
+   return String(x.id)!==String(id);
+ });
+
+ state.queue=state.queue.filter(function(q){
+   return !(q && q.payload && String(q.payload.id)===String(id));
+ });
+
+ if(state.editing && String(state.editing.id)===String(id)){
+   state.editing=null;
+ }
+
+ save();
+ msg('Unsynced truck deleted. Removed from local list and queue. Queue items removed: '+matchingQueue.length+'.','ok');
+ render();
+}
+
+window.saveTruck=function(){if(busy)return;captureCurrentForm(state.editing||{});setBusy(true);try{var checks={};Array.prototype.forEach.call(document.querySelectorAll('[data-check]'),function(s){checks[s.getAttribute('data-check')]=s.value});var e=state.editing||{};if(e.id&&!state.admin){msg('Admin mode required to update saved truck records.','error');return}var trailers=$('trailerReg').value.split(/[\n,;]+/).map(function(x){return x.trim().toUpperCase()}).filter(Boolean).join(', ');var rec={id:e.id||uid(),company:$('company').value,driver:$('driver').value.trim(),truckReg:$('truckReg').value.trim().toUpperCase(),trailerReg:trailers,licenseExpiry:$('licenseExpiry').value,permit:$('permit').value.trim(),notes:$('notes').value.trim(),checks:checks,photos:e.photos||[],photoSections:e.photoSections||{},approvalStatus:e.approvalStatus||'Pending',plantNumber:e.plantNumber||'',qrValue:e.qrValue||'',createdAt:e.createdAt||nowSA(),updatedAt:nowSA(),adminUpdate:!!state.admin};var missed=markMissed(['company','truckReg','licenseExpiry']);if(missed.length){msg('Please complete red highlighted fields. Entry not saved.','error');state.editing=e;return}if(duplicateTruckRegExists(rec.truckReg,rec.id)){$('truckReg').classList.add('missed');msg('Duplicate Truck Registration is not allowed.','error');state.editing=e;return}rec.phoneReportCreatedAt=nowSA();rec.phoneReportHtml=buildPhoneReportHtml(rec);var idx=state.trucks.findIndex(function(x){return x.id===rec.id});if(idx>=0)state.trucks[idx]=rec;else state.trucks.unshift(rec);queue('saveTruck',rec);state.editing=null;save();msg('Phone report created. Saved locally and queued. Admin must approve after sync.','ok');show('list')}finally{setBusy(false)}}
+function renderList(){var cards=state.trucks.map(function(t){var s=statusFor(t);return '<div class="item"><div class="row"><strong>'+esc(t.plantNumber||'No plant number yet')+'</strong><span class="status '+s[1]+'">'+s[0]+'</span><span class="status pending">'+esc(t.approvalStatus)+'</span></div><p><b>'+esc(t.truckReg)+'</b> / Trailer(s): '+esc(t.trailerReg||'-')+'</p><p class="muted">'+esc(t.company)+' • Expiry: '+esc(t.licenseExpiry)+' • Driver: '+esc(t.driver||'-')+'</p>'+(t.pendingPdfUrl?'<p><a href="'+esc(t.pendingPdfUrl)+'" target="_blank">Open synced pending report</a></p>':'')+(t.pdfUrl?'<p><a href="'+esc(t.pdfUrl)+'" target="_blank">Open approved PDF</a></p>':'')+'<div class="row"><button class="secondary" onclick="editTruck(\''+t.id+'\')">'+(state.admin?'Open/Edit':'View Only')+'</button>'+(hasUnsyncedTruck(t.id)?'<button class="danger" onclick="deleteUnsyncedTruck(\''+t.id+'\')">Delete Unsynced</button>':'')+(state.admin&&t.approvalStatus!=='Approved'?'<button class="good" onclick="approveTruck(\''+t.id+'\')">Approve</button>':'')+'</div></div>'}).join('')||'<div class="card"><p>No trucks yet.</p></div>';$('view').innerHTML='<div class="grid"><section class="card"><h2>Truck Register</h2><div class="list">'+cards+'</div></section></div>'}
+window.editTruck=function(id){var t=state.trucks.find(function(x){return x.id===id});if(!t)return;if(!state.admin){msg('Admin mode required to edit/update saved truck records.','error');return}state.editing=JSON.parse(JSON.stringify(t));show('add')}
+window.approveTruck=function(id){if(busy)return;if(!state.admin){msg('Admin mode required.','error');return}var t=state.trucks.find(function(x){return x.id===id});if(!t)return;if(!t.plantNumber)t.plantNumber=nextPlant();t.qrValue='TRUCK|'+t.plantNumber+'|'+t.truckReg;t.approvalStatus='Approved';t.approvedAt=nowSA();t.updatedAt=nowSA();t.adminUpdate=true;queue('approveTruck',t);save();syncNow()}
+function nextPlant(){var nums=state.trucks.map(function(t){var m=String(t.plantNumber||'').match(/HFQ-T-(\d+)/);return m?parseInt(m[1],10):0});return 'HFQ-T-'+String(Math.max.apply(null,[0].concat(nums))+1).padStart(4,'0')}
+function queue(a,p){state.queue.push({id:uid(),action:a,payload:p,createdAt:nowSA(),status:'Queued'});save()}
+function api(data){return fetch(HARD_CODED_SCRIPT_URL,{method:'POST',body:JSON.stringify(data)}).then(function(r){return r.text()}).then(function(t){try{return JSON.parse(t)}catch(e){throw new Error(t)}})}
+window.downloadMasters=function(){if(busy)return;setBusy(true,'Downloading masters...');api({action:'getMasters'}).then(function(res){if(res.companies)state.companies=res.companies;if(res.trucks)state.trucks=res.trucks;save();msg('Masters downloaded.','ok');render()}).catch(function(e){msg('Download failed: '+e.message,'error')}).finally(function(){setBusy(false)})}
+window.syncNow=syncNow;function syncNow(){if(busy)return;if(!state.queue.length){msg('Nothing to sync.','ok');return}setBusy(true,'Syncing queue...');api({action:'syncQueue',queue:state.queue.slice()}).then(function(res){if(res.ok){state.queue=[];if(res.trucks)state.trucks=res.trucks;save();msg('Sync complete.','ok');render()}else throw new Error(res.error||'Sync failed')}).catch(function(e){msg('Sync failed: '+e.message,'error')}).finally(function(){setBusy(false)})}
+function renderSync(){$('view').innerHTML='<div class="grid"><section class="card"><h2>Sync</h2><p class="muted">URL is hardcoded and hidden.</p><div class="row"><button class="secondary" onclick="downloadMasters()">Download Masters</button><button class="good" onclick="syncNow()">Sync Queue</button></div><p class="muted">Queue entries: '+state.queue.length+'</p><p class="muted">Unsynced new truck entries can be deleted from the Trucks tab before Sync Queue is pressed. Delete removes the local truck and all matching queue items.</p></section></div>'}
+function renderAdmin(){if(!state.admin){$('view').innerHTML='<div class="grid"><section class="card"><h2>Admin Mode</h2><label>One-time PIN</label><input id="pin" inputmode="numeric"><div class="row"><button class="secondary" onclick="requestAdminPin()">Request PIN</button><button onclick="verifyPin()">Unlock Admin</button></div></section></div>';return}$('view').innerHTML='<div class="grid"><section class="card"><h2>Admin Mode Active</h2><button class="danger" onclick="lockAdmin()">Exit Admin Mode</button></section></div>'}
+window.requestAdminPin=function(){if(busy)return;setBusy(true,'Requesting admin PIN...');api({action:'createPin',purpose:'Admin Login'}).then(function(res){msg(res.ok?'Admin PIN requested. Ask admin to check Admin Pins sheet.':'Could not create PIN.','ok')}).catch(function(e){msg('Request PIN failed: '+e.message,'error')}).finally(function(){setBusy(false)})};window.verifyPin=function(){var pin=$('pin').value.trim();if(!pin){msg('Enter PIN.','error');return}setBusy(true,'Checking PIN...');api({action:'verifyPin',pin:pin,deviceId:getDeviceId()}).then(function(res){if(res.ok){state.admin=true;msg('Admin mode unlocked.','ok');render()}else msg(res.error||'Invalid PIN.','error')}).catch(function(e){msg('PIN check failed: '+e.message,'error')}).finally(function(){setBusy(false)})};window.lockAdmin=function(){state.admin=false;render()}
+function getDeviceId(){var k='hfqTruckDeviceId';var v=localStorage.getItem(k);if(!v){v='DEV-'+uid();localStorage.setItem(k,v)}return v}
+window.addEventListener('error',function(e){msg('App error: '+e.message,'error')});load();render();if('serviceWorker' in navigator){navigator.serviceWorker.register('service-worker.js?v=1.0.27').catch(function(){})}
+})();
+</script>
+</body>
+</html>
